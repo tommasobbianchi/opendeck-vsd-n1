@@ -19,7 +19,11 @@ pub const KEY_COUNT: usize = ROW_COUNT * COL_COUNT; // 18
 pub const ENCODER_COUNT: usize = 1; // the rotary knob
 
 /// Grid positions of the last row: the secondary 64x64 screens, not the main LCD keys.
-pub const SECONDARY_KEYS: [u8; 3] = [15, 16, 17];
+/// Grid positions of the secondary strip: two 64x64 screens with a button behind each,
+/// and a third screen with the knob under it. Physically this strip is the top row, so it
+/// takes row 0 and the 15 main keys start below it -- otherwise OpenDeck draws the deck
+/// upside down with respect to the hardware.
+pub const SECONDARY_KEYS: [u8; 3] = [0, 1, 2];
 
 /// Hardware key codes, byte[9] of an `ACK..OK` input report.
 /// Source: MiraboxSpace/StreamDock-Device-SDK, cross-checked against two physical units.

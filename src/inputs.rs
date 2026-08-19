@@ -23,17 +23,36 @@ pub fn process_input(input: u8, state: u8) -> Result<DeviceInput, MirajazzError>
     }
 }
 
+/// Number of slots in the secondary strip, which occupies grid row 0.
+const SECONDARY_ROW: usize = 3;
+
 /// Converts a hardware key code into an index in OpenDeck's row-major 3-column grid.
 ///
-/// The 15 LCD keys arrive as 0x01..=0x0F in reading order and fill rows 0..4 exactly, so the
-/// mapping is a plain subtract-one. The two physical buttons of the secondary strip take the
-/// first two slots of the last row; the third secondary screen has no button behind it.
+/// The strip of small screens is physically *above* the 15 main keys, so it takes row 0 and
+/// the main block starts at row 1. Getting this backwards is not cosmetic: OpenDeck lays keys
+/// out in grid order, so the on-screen deck would be a mirror of the one under your hands.
+///
+/// Its two buttons take the first two slots; the third slot is the screen the knob sits under,
+/// which has no button and so never reports a key code.
 pub fn device_to_opendeck(input: u8) -> Option<usize> {
     match input {
-        1..=LCD_KEY_COUNT => Some((input - 1) as usize),
-        HW_TOP_BUTTON_LEFT => Some(15),
-        HW_TOP_BUTTON_RIGHT => Some(16),
+        1..=LCD_KEY_COUNT => Some(SECONDARY_ROW + (input - 1) as usize),
+        HW_TOP_BUTTON_LEFT => Some(0),
+        HW_TOP_BUTTON_RIGHT => Some(1),
         _ => None,
+    }
+}
+
+/// Inverse of [`device_to_opendeck`] for image writes.
+///
+/// mirajazz addresses screens as `key + 1` on the wire, and the device numbers the main block
+/// 1..=15 before the secondary strip 16..=18 -- the opposite order to the grid above. Without
+/// this translation the images land on the right device but the wrong screens.
+pub fn opendeck_to_device(position: u8) -> u8 {
+    if (position as usize) < SECONDARY_ROW {
+        LCD_KEY_COUNT + position
+    } else {
+        position - SECONDARY_ROW as u8
     }
 }
 
@@ -75,28 +94,48 @@ mod tests {
     #[test]
     fn lcd_corners_match_what_the_hardware_reported() {
         // Measured on the device: pressing each corner of the 3x5 block produced these codes.
-        assert_eq!(device_to_opendeck(0x01), Some(0), "top-left");
-        assert_eq!(device_to_opendeck(0x03), Some(2), "top-right");
-        assert_eq!(device_to_opendeck(0x0D), Some(12), "bottom-left");
-        assert_eq!(device_to_opendeck(0x0F), Some(14), "bottom-right");
+        // They start at grid 3 because the secondary strip sits above them, in row 0.
+        assert_eq!(device_to_opendeck(0x01), Some(3), "top-left");
+        assert_eq!(device_to_opendeck(0x03), Some(5), "top-right");
+        assert_eq!(device_to_opendeck(0x0D), Some(15), "bottom-left");
+        assert_eq!(device_to_opendeck(0x0F), Some(17), "bottom-right");
 
         // The LCD block never spills into the secondary row
         for code in 1..=LCD_KEY_COUNT {
             let index = device_to_opendeck(code).unwrap();
-            assert!(index < 15, "key {code:#04x} spilled into the secondary row");
+            assert!(index >= 3, "key {code:#04x} spilled into the secondary row");
         }
     }
 
     #[test]
-    fn top_buttons_take_the_last_row_and_nothing_else_maps() {
-        assert_eq!(device_to_opendeck(HW_TOP_BUTTON_LEFT), Some(15));
-        assert_eq!(device_to_opendeck(HW_TOP_BUTTON_RIGHT), Some(16));
+    fn top_buttons_take_the_first_row_and_nothing_else_maps() {
+        assert_eq!(device_to_opendeck(HW_TOP_BUTTON_LEFT), Some(0));
+        assert_eq!(device_to_opendeck(HW_TOP_BUTTON_RIGHT), Some(1));
         assert!(KEY_COUNT == 18);
 
         // Knob codes are handled as encoder events, never as buttons
         assert_eq!(device_to_opendeck(HW_KNOB_PRESS), None);
         assert_eq!(device_to_opendeck(HW_KNOB_LEFT), None);
         assert_eq!(device_to_opendeck(HW_KNOB_RIGHT), None);
+    }
+
+    #[test]
+    fn image_positions_round_trip_back_to_the_key_that_reports_them() {
+        // Every screen with a button behind it must take its image on the same physical key
+        // that reports the press, or the deck shows one thing and does another.
+        for code in (1..=LCD_KEY_COUNT).chain([HW_TOP_BUTTON_LEFT, HW_TOP_BUTTON_RIGHT]) {
+            let position = device_to_opendeck(code).unwrap() as u8;
+            let wire_key = opendeck_to_device(position) + 1; // mirajazz sends key + 1
+            let expected = if code >= HW_TOP_BUTTON_LEFT {
+                LCD_KEY_COUNT + 1 + (code - HW_TOP_BUTTON_LEFT)
+            } else {
+                code
+            };
+            assert_eq!(wire_key, expected, "grid {position} for code {code:#04x}");
+        }
+
+        // The knob's screen has no button, so it is only ever addressed as an image.
+        assert_eq!(opendeck_to_device(2) + 1, 18);
     }
 
     #[test]
