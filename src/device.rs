@@ -61,6 +61,7 @@ pub async fn device_task(candidate: CandidateDevice, token: CancellationToken) {
 
     tokio::select! {
         _ = device_events_task(&candidate) => {},
+        _ = heartbeat_task(&candidate) => {},
         _ = token.cancelled() => {}
     };
 
@@ -136,6 +137,34 @@ pub async fn connect(candidate: &CandidateDevice) -> Result<Device, MirajazzErro
             log::error!("Error while connecting to device: {e}");
 
             Err(e)
+        }
+    }
+}
+
+/// The N1 drops the host and re-enumerates after roughly 35 seconds of silence, so it needs a
+/// periodic `CRT..CONNECT`. Devices in the AKP03/N3 family do not, which is why the upstream
+/// plugin never calls `keep_alive`. The vendor SDK uses a 10s period; we halve it so a single
+/// lost write is not enough to drop the device.
+async fn heartbeat_task(candidate: &CandidateDevice) {
+    let mut ticker = tokio::time::interval(std::time::Duration::from_secs(5));
+    ticker.tick().await; // the first tick completes immediately
+
+    loop {
+        ticker.tick().await;
+
+        let result = {
+            let devices = DEVICES.read().await;
+            match devices.get(&candidate.id) {
+                Some(device) => device.keep_alive().await,
+                None => return, // device went away, nothing left to keep alive
+            }
+            // read guard is dropped here, before any handle_error takes a write lock
+        };
+
+        if let Err(e) = result {
+            log::error!("Heartbeat failed for {}: {}", candidate.id, e);
+            handle_error(&candidate.id, e).await;
+            return;
         }
     }
 }

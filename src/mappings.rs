@@ -6,17 +6,20 @@ use mirajazz::{
 // Must be unique between all the plugins, 2 characters long and match `DeviceNamespace` field in `manifest.json`
 pub const DEVICE_NAMESPACE: &str = "n1";
 
-/// The N1 has 15 LCD keys in a 3x5 block plus a strip of secondary screens and two
-/// physical buttons. OpenDeck can only register a rectangular grid, so we expose 3x6 and
-/// fold the non-LCD controls into the sixth column -- the same compromise opendeck-akp153
-/// makes for its side buttons.
-pub const ROW_COUNT: usize = 3;
-pub const COL_COUNT: usize = 6;
+/// The N1 is a numpad replacement, so it stands in portrait: 15 LCD keys in 3 columns by
+/// 5 rows, with a strip of three secondary screens above them. Verified on hardware --
+/// pressing the top-right key reports 0x03 and the bottom-left key reports 0x0D.
+///
+/// We expose a 3x6 grid and give the secondary strip the last row, which lines up exactly:
+/// the device's display slot is always the grid index plus one, for main and secondary keys
+/// alike.
+pub const ROW_COUNT: usize = 6;
+pub const COL_COUNT: usize = 3;
 pub const KEY_COUNT: usize = ROW_COUNT * COL_COUNT; // 18
 pub const ENCODER_COUNT: usize = 1; // the rotary knob
 
-/// Grid positions of the sixth column: the secondary 64x64 screens, not the main LCD keys.
-pub const SECONDARY_KEYS: [u8; 3] = [5, 11, 17];
+/// Grid positions of the last row: the secondary 64x64 screens, not the main LCD keys.
+pub const SECONDARY_KEYS: [u8; 3] = [15, 16, 17];
 
 /// Hardware key codes, byte[9] of an `ACK..OK` input report.
 /// Source: MiraboxSpace/StreamDock-Device-SDK, cross-checked against two physical units.
@@ -66,10 +69,9 @@ impl Kind {
     }
 }
 
-// ponytail: rotation and mirroring are the one thing no descriptor tells you -- they have to
-// be seen on the glass. Rot0/None is what lightslinger sends to this exact PID and it renders
-// upright, so start there. If icons come out turned or flipped, these two constants are the
-// only knob you need to touch.
+// Verified on hardware: numbers pushed at Rot0 with no mirroring render upright and in the
+// right cell. Kept as named constants because this is the one thing no descriptor tells you --
+// a firmware revision that flips the panel would be fixed here and nowhere else.
 pub const IMAGE_ROTATION: ImageRotation = ImageRotation::Rot0;
 pub const IMAGE_MIRRORING: ImageMirroring = ImageMirroring::None;
 

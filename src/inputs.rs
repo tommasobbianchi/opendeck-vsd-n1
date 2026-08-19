@@ -1,14 +1,12 @@
 use mirajazz::{error::MirajazzError, types::DeviceInput};
 
 use crate::mappings::{
-    COL_COUNT, ENCODER_COUNT, HW_KNOB_LEFT, HW_KNOB_PRESS, HW_KNOB_RIGHT, HW_TOP_BUTTON_LEFT,
+    ENCODER_COUNT, HW_KNOB_LEFT, HW_KNOB_PRESS, HW_KNOB_RIGHT, HW_TOP_BUTTON_LEFT,
     HW_TOP_BUTTON_RIGHT, KEY_COUNT,
 };
 
 /// Number of main LCD keys, reported by the device as 0x01..=0x0F
 const LCD_KEY_COUNT: u8 = 15;
-/// The LCD block is 5 columns wide inside the 6-column OpenDeck grid
-const LCD_COLS: usize = 5;
 
 pub fn process_input(input: u8, state: u8) -> Result<DeviceInput, MirajazzError> {
     log::debug!("Processing input: {:#04x}, {}", input, state);
@@ -22,18 +20,16 @@ pub fn process_input(input: u8, state: u8) -> Result<DeviceInput, MirajazzError>
     }
 }
 
-/// Converts a hardware key code into an index in OpenDeck's row-major 3x6 grid.
+/// Converts a hardware key code into an index in OpenDeck's row-major 3-column grid.
 ///
-/// The 15 LCD keys arrive as 0x01..=0x0F in reading order and occupy columns 0..4.
-/// The two physical top buttons are folded into the sixth column.
+/// The 15 LCD keys arrive as 0x01..=0x0F in reading order and fill rows 0..4 exactly, so the
+/// mapping is a plain subtract-one. The two physical buttons of the secondary strip take the
+/// first two slots of the last row; the third secondary screen has no button behind it.
 pub fn device_to_opendeck(input: u8) -> Option<usize> {
     match input {
-        1..=LCD_KEY_COUNT => {
-            let i = (input - 1) as usize;
-            Some((i / LCD_COLS) * COL_COUNT + (i % LCD_COLS))
-        }
-        HW_TOP_BUTTON_LEFT => Some(5),
-        HW_TOP_BUTTON_RIGHT => Some(11),
+        1..=LCD_KEY_COUNT => Some((input - 1) as usize),
+        HW_TOP_BUTTON_LEFT => Some(15),
+        HW_TOP_BUTTON_RIGHT => Some(16),
         _ => None,
     }
 }
@@ -74,27 +70,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn lcd_keys_land_in_the_first_five_columns_in_reading_order() {
-        // Row 0 of the device maps to grid 0..4, row 1 to 6..10, row 2 to 12..16.
-        assert_eq!(device_to_opendeck(0x01), Some(0));
-        assert_eq!(device_to_opendeck(0x05), Some(4));
-        assert_eq!(device_to_opendeck(0x06), Some(6));
-        assert_eq!(device_to_opendeck(0x0A), Some(10));
-        assert_eq!(device_to_opendeck(0x0B), Some(12));
-        assert_eq!(device_to_opendeck(0x0F), Some(16));
+    fn lcd_corners_match_what_the_hardware_reported() {
+        // Measured on the device: pressing each corner of the 3x5 block produced these codes.
+        assert_eq!(device_to_opendeck(0x01), Some(0), "top-left");
+        assert_eq!(device_to_opendeck(0x03), Some(2), "top-right");
+        assert_eq!(device_to_opendeck(0x0D), Some(12), "bottom-left");
+        assert_eq!(device_to_opendeck(0x0F), Some(14), "bottom-right");
 
-        // The sixth column is never used by an LCD key
+        // The LCD block never spills into the secondary row
         for code in 1..=LCD_KEY_COUNT {
             let index = device_to_opendeck(code).unwrap();
-            assert_ne!(index % COL_COUNT, 5, "key {code:#04x} collided with column 6");
-            assert!(index < KEY_COUNT);
+            assert!(index < 15, "key {code:#04x} spilled into the secondary row");
         }
     }
 
     #[test]
-    fn top_buttons_take_the_sixth_column_and_nothing_else_maps() {
-        assert_eq!(device_to_opendeck(HW_TOP_BUTTON_LEFT), Some(5));
-        assert_eq!(device_to_opendeck(HW_TOP_BUTTON_RIGHT), Some(11));
+    fn top_buttons_take_the_last_row_and_nothing_else_maps() {
+        assert_eq!(device_to_opendeck(HW_TOP_BUTTON_LEFT), Some(15));
+        assert_eq!(device_to_opendeck(HW_TOP_BUTTON_RIGHT), Some(16));
+        assert!(KEY_COUNT == 18);
 
         // Knob codes are handled as encoder events, never as buttons
         assert_eq!(device_to_opendeck(HW_KNOB_PRESS), None);
