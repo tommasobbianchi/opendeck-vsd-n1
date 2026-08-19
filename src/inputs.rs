@@ -2,7 +2,7 @@ use mirajazz::{error::MirajazzError, types::DeviceInput};
 
 use crate::mappings::{
     ENCODER_COUNT, HW_KNOB_LEFT, HW_KNOB_PRESS, HW_KNOB_RIGHT, HW_TOP_BUTTON_LEFT,
-    HW_TOP_BUTTON_RIGHT, KEY_COUNT,
+    HW_TOP_BUTTON_RIGHT, HW_WRITE_CONFIRM, KEY_COUNT,
 };
 
 /// Number of main LCD keys, reported by the device as 0x01..=0x0F
@@ -14,6 +14,9 @@ pub fn process_input(input: u8, state: u8) -> Result<DeviceInput, MirajazzError>
     match input {
         // A zero key code means "nothing pressed", used to resynchronise state
         0 => Ok(DeviceInput::ButtonStateChange(vec![false; KEY_COUNT])),
+        // Every image write is echoed back on the same endpoint. It is not a control, and
+        // treating it as one turns a normal repaint into a stream of BadData errors.
+        HW_WRITE_CONFIRM => Ok(DeviceInput::NoData),
         HW_KNOB_LEFT | HW_KNOB_RIGHT => read_encoder_value(input),
         HW_KNOB_PRESS => read_encoder_press(state),
         _ => read_button_press(input, state),
@@ -110,6 +113,14 @@ mod tests {
             DeviceInput::EncoderStateChange(v) => assert_eq!(v, vec![true]),
             other => panic!("expected an encoder press, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn write_confirmations_are_ignored_rather_than_erroring() {
+        assert!(matches!(
+            process_input(HW_WRITE_CONFIRM, 0).unwrap(),
+            DeviceInput::NoData
+        ));
     }
 
     #[test]

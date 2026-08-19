@@ -20,6 +20,8 @@ pub async fn device_task(candidate: CandidateDevice, token: CancellationToken) {
     let device = async || -> Result<Device, MirajazzError> {
         let device = connect(&candidate).await?;
 
+        // Must come first: until the device is in software mode it reports no input at all.
+        device.set_mode(candidate.kind.software_mode()).await?;
         device.set_brightness(50).await?;
         device.clear_all_button_images().await?;
         device.flush().await?;

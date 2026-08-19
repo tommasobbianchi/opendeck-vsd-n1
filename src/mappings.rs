@@ -28,6 +28,8 @@ pub const HW_TOP_BUTTON_RIGHT: u8 = 0x1F;
 pub const HW_KNOB_PRESS: u8 = 0x23;
 pub const HW_KNOB_LEFT: u8 = 0x32;
 pub const HW_KNOB_RIGHT: u8 = 0x33;
+/// Not a control: the device echoes this after a successful image write.
+pub const HW_WRITE_CONFIRM: u8 = 0xFF;
 
 #[derive(Debug, Clone)]
 pub enum Kind {
@@ -66,6 +68,16 @@ impl Kind {
 
     pub fn supports_both_states(&self) -> bool {
         true
+    }
+
+    /// The N1 boots emulating a keyboard and reports nothing on the vendor interface until it
+    /// is switched into software mode.
+    ///
+    /// Mind the value. The vendor SDK documents 2 as software mode, but on this PID 2 selects
+    /// the calculator; 3 is software. Sending the documented 2 leaves the device connected and
+    /// silent, which looks exactly like a broken reader.
+    pub fn software_mode(&self) -> u8 {
+        3
     }
 }
 
