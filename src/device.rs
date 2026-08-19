@@ -182,6 +182,16 @@ async fn device_events_task(candidate: &CandidateDevice) -> Result<(), MirajazzE
     };
     drop(devices_lock);
 
+    // mirajazz starts DeviceState with empty vectors, and its diff loop zips ours against
+    // them. zip stops at the shorter side, so the first report after connecting yields no
+    // updates at all and only establishes the baseline -- the first key you press is silently
+    // swallowed. Priming the vectors to the right length makes that first press count.
+    {
+        let mut states = reader.states.lock().await;
+        states.buttons = vec![false; KEY_COUNT];
+        states.encoders = vec![false; ENCODER_COUNT];
+    }
+
     log::info!("Connected to {} for incoming events", candidate.id);
 
     log::info!("Reader is ready for {}", candidate.id);
