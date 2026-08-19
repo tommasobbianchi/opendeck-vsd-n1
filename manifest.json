@@ -1,0 +1,13 @@
+{
+  "Name": "VSD Stream Dock N1",
+  "Description": "Device support plugin for the VSDinside / TreasLin Stream Dock N1 (5548:1002)",
+  "Author": "Tommaso Bianchi",
+  "Version": "0.1.0",
+  "PluginUUID": "dev.native.plugins.opendeck-vsd-n1",
+  "CodePathLin": "opendeck-vsd-n1-linux",
+  "Icon": "assets/icon",
+  "Category": "Hardware",
+  "OS": [{ "Platform": "linux" }],
+  "Actions": [],
+  "DeviceNamespace": "n1"
+}
