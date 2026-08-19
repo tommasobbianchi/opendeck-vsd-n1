@@ -44,22 +44,22 @@ pub async fn device_task(candidate: CandidateDevice, token: CancellationToken) {
         }
     };
 
-    log::info!("Registering device {}", candidate.id);
-    if let Some(outbound) = OUTBOUND_EVENT_MANAGER.lock().await.as_mut() {
-        outbound
-            .register_device(
-                candidate.id.clone(),
-                candidate.kind.human_name(),
-                ROW_COUNT as u8,
-                COL_COUNT as u8,
-                ENCODER_COUNT as u8,
-                0,
-            )
-            .await
-            .unwrap();
-    }
+    announce(&candidate).await;
 
     DEVICES.write().await.insert(candidate.id.clone(), device);
+
+    // A device that is already plugged in registers about a second after launch, while
+    // OpenDeck's webview is still mounting: its initial get_devices returns empty and the
+    // "devices" event fires before the listener is attached, so the UI sits on "No devices
+    // detected" even though the backend holds the device. Re-announcing once the window has
+    // settled costs nothing and makes a cold start behave like a hotplug.
+    {
+        let candidate = candidate.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_secs(6)).await;
+            announce(&candidate).await;
+        });
+    }
 
     tokio::select! {
         _ = device_events_task(&candidate) => {},
@@ -74,6 +74,33 @@ pub async fn device_task(candidate: CandidateDevice, token: CancellationToken) {
     }
 
     log::info!("Device task finished for {:?}", candidate);
+}
+
+/// Tells OpenDeck about the device. Safe to call more than once: OpenDeck keys devices by id,
+/// so a repeat registration refreshes the UI rather than creating a duplicate.
+async fn announce(candidate: &CandidateDevice) {
+    log::info!("Registering device {}", candidate.id);
+
+    let mut manager = OUTBOUND_EVENT_MANAGER.lock().await;
+    let Some(outbound) = manager.as_mut() else {
+        log::error!("OUTBOUND_EVENT_MANAGER is None -- cannot register {}", candidate.id);
+        return;
+    };
+
+    match outbound
+        .register_device(
+            candidate.id.clone(),
+            candidate.kind.human_name(),
+            ROW_COUNT as u8,
+            COL_COUNT as u8,
+            ENCODER_COUNT as u8,
+            0,
+        )
+        .await
+    {
+        Ok(()) => log::info!("register_device event sent for {}", candidate.id),
+        Err(e) => log::error!("register_device failed for {}: {e}", candidate.id),
+    }
 }
 
 /// Handles errors, returning true if should continue, returning false if an error is fatal
