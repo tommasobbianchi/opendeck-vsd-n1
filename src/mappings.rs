@@ -25,6 +25,10 @@ pub const ENCODER_COUNT: usize = 1; // the rotary knob
 /// upside down with respect to the hardware.
 pub const SECONDARY_KEYS: [u8; 3] = [0, 1, 2];
 
+/// The knob sits under the third screen of the strip, so its grid slot is the one no key
+/// reports. OpenDeck draws the encoder there rather than in a row of its own.
+pub const KNOB_POSITION: u16 = 2;
+
 /// Hardware key codes, byte[9] of an `ACK..OK` input report.
 /// Source: MiraboxSpace/StreamDock-Device-SDK, cross-checked against two physical units.
 pub const HW_TOP_BUTTON_LEFT: u8 = 0x1E;

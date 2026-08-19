@@ -8,7 +8,7 @@ use crate::{
     DEVICES, TOKENS,
     inputs::opendeck_to_device,
     mappings::{
-        COL_COUNT, CandidateDevice, ENCODER_COUNT, KEY_COUNT, Kind, ROW_COUNT,
+        COL_COUNT, CandidateDevice, ENCODER_COUNT, KEY_COUNT, KNOB_POSITION, Kind, ROW_COUNT,
         get_image_format_for_key,
     },
 };
@@ -79,6 +79,29 @@ pub async fn device_task(candidate: CandidateDevice, token: CancellationToken) {
 
 /// Tells OpenDeck about the device. Safe to call more than once: OpenDeck keys devices by id,
 /// so a repeat registration refreshes the UI rather than creating a duplicate.
+/// Sent instead of `OutboundEventManager::register_device`, which cannot express `encoder_slots`.
+/// The field is optional on OpenDeck's side, so an OpenDeck that predates it ignores it and
+/// falls back to drawing the knob in a row below the keys.
+#[derive(serde::Serialize)]
+struct RegisterDeviceEvent {
+    event: &'static str,
+    payload: RegisterDevicePayload,
+}
+
+#[derive(serde::Serialize)]
+struct RegisterDevicePayload {
+    id: String,
+    name: String,
+    rows: u8,
+    columns: u8,
+    encoders: u8,
+    /// Grid position of each encoder. The knob is in the strip along the top edge, not in a row
+    /// of its own, so telling OpenDeck to draw it there is what makes the on-screen deck match
+    /// the one under your hands.
+    encoder_slots: Vec<u16>,
+    r#type: u8,
+}
+
 async fn announce(candidate: &CandidateDevice) {
     log::info!("Registering device {}", candidate.id);
 
@@ -88,17 +111,20 @@ async fn announce(candidate: &CandidateDevice) {
         return;
     };
 
-    match outbound
-        .register_device(
-            candidate.id.clone(),
-            candidate.kind.human_name(),
-            ROW_COUNT as u8,
-            COL_COUNT as u8,
-            ENCODER_COUNT as u8,
-            0,
-        )
-        .await
-    {
+    let event = RegisterDeviceEvent {
+        event: "registerDevice",
+        payload: RegisterDevicePayload {
+            id: candidate.id.clone(),
+            name: candidate.kind.human_name(),
+            rows: ROW_COUNT as u8,
+            columns: COL_COUNT as u8,
+            encoders: ENCODER_COUNT as u8,
+            encoder_slots: vec![KNOB_POSITION],
+            r#type: 0,
+        },
+    };
+
+    match outbound.send_event(event).await {
         Ok(()) => log::info!("register_device event sent for {}", candidate.id),
         Err(e) => log::error!("register_device failed for {}: {e}", candidate.id),
     }
