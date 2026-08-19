@@ -1,74 +1,117 @@
-![Plugin Icon](assets/icon.png)
+# OpenDeck VSD Stream Dock N1
 
-# OpenDeck Ajazz AKP03 / Mirabox N3 Plugin
+An unofficial [OpenDeck](https://github.com/nekename/OpenDeck) device plugin for the
+**VSDinside / TreasLin Stream Dock N1** (`5548:1002`), giving it native Linux support with no
+vendor software, no Proton and no emulation layer.
 
-An unofficial plugin for Mirabox N3-family devices
+This is what makes the N1 context-aware: OpenDeck switches profiles when you switch
+applications, so the fifteen LCD keys change their icons and their actions depending on which
+window has focus.
 
-## OpenDeck version
+## Supported device
 
-Requires OpenDeck 2.5.0 or newer
+| | |
+|---|---|
+| USB ID | `5548:1002` |
+| Reports as | `HOTSPOTEKUSB HID DEMO` |
+| Firmware tested | `V3.VSD N1.02.016` |
+| Retail names | VSDinside Stream Dock N1, TreasLin N1, ActionRing N1 |
 
-## Supported devices
+> Mirabox also markets the **Mbox-N4** as "StreamDock N1", but that is `6603:1007` with a
+> different key-code map. This plugin does not target it.
 
-- Ajazz AKP03 (0300:1001)
-- Ajazz AKP03E (0300:1002)
-- Ajazz AKP03R (0300:1003)
-- Ajazz AKP03E (rev. 2) (0300:3002)
-- Ajazz AKP03R (rev. 2) (0300:3003)
-- Mirabox N3 (6602:1000, 6602:1002, 6603:1002, 6603:1003)
-- Soomfon Stream Controller SE (1500:3001)
-- Mars Gaming MSD-TWO (0B00:1001)
-- TreasLin N3 (5548:1001)
-- Redragon Skyrider SS-551 (0200:2000)
+## Layout
 
-## Platform support
+The N1 stands in **portrait**: 15 LCD keys in 3 columns by 5 rows, with a strip of three
+secondary screens above them. It is a numpad replacement, and the 480×854 background screen
+agrees. OpenDeck can only register a rectangular grid, so the plugin exposes 3×6 and gives the
+secondary strip the last row — which lines up exactly, because the device's display slot is
+always the grid index plus one.
 
-- Linux: Guaranteed, if stuff breaks - I'll probably catch it before public release
-- Mac: Best effort, no tests before release, things may break, but I probably have means to fix them
-- Windows: Zero effort, no tests before release, if stuff breaks - too bad, it's up to you to contribute fixes
-
-## Installation
-
-1. Download an archive from [releases](https://github.com/4ndv/opendeck-akp03/releases)
-2. In OpenDeck: Plugins -> Install from file
-3. Download [udev rules](./40-opendeck-akp03.rules) and install them by copying into `/etc/udev/rules.d/` and running `sudo udevadm control --reload-rules`
-4. Unplug and plug again the device, restart OpenDeck
-
-## Adding new devices
-
-Read [this wiki page](https://github.com/4ndv/opendeck-akp03/wiki/Adding-support-for-new-devices) for more information.
-
-## Building
-
-### Prerequisites
-
-You'll need:
-
-- A Linux OS of some sort
-- Rust 1.87 and up with `x86_64-unknown-linux-gnu` and `x86_64-pc-windows-gnu` targets installed
-- gcc with Windows support
-- Docker
-- [just](https://just.systems)
-
-On Arch Linux:
-
-```sh
-sudo pacman -S just mingw-w64-gcc mingw-w64-binutils
+```
+ 0  1  2      <- LCD keys, device codes 0x01..0x03
+ 3  4  5
+ 6  7  8
+ 9 10 11
+12 13 14      <- device codes 0x0D..0x0F
+15 16 17      <- secondary strip: left button, right button, display-only
 ```
 
-Adding rust targets:
+The knob is encoder 0: turning it emits encoder change events, pressing it emits down/up.
 
-```sh
-rustup target add x86_64-pc-windows-gnu
-rustup target add x86_64-unknown-linux-gnu
+Full byte-level trace and the known limitations: [docs/verified-mapping.md](docs/verified-mapping.md).
+
+## Protocol notes
+
+Everything below was measured on hardware, and several points contradict the vendor
+documentation.
+
+- Transport is **hidraw via usage page `0xFFA0`** (interface 0). Interface 1 is a fake boot
+  keyboard the device emulates until it is switched into software mode.
+- Output reports are **1025 bytes**, input reports **513 bytes**. Shorter writes are silently
+  dropped.
+- Protocol version **3**: 1024-byte packets, unique per-unit serial, both key edges reported.
+- **The device must be switched into software mode or it reports no input at all.** Mind the
+  value: the vendor SDK documents `2` as software mode, but on this PID `2` selects the
+  calculator and **`3`** is software. Sending the documented value leaves the device connected
+  and permanently silent.
+- **A `CRT..CONNECT` heartbeat is mandatory.** Without it the N1 drops the host and
+  re-enumerates after roughly 35 seconds. Devices in the AKP03/N3 family do not need this,
+  which is why the upstream plugins never call `keep_alive`.
+- The device **echoes `0xFF`** in the key-code byte after every image write. It is not a
+  control; treating it as one turns each repaint into a stream of `BadData`.
+- Key images are JPEG: **96×96** for the main LCD keys, **64×64** for the secondary screens.
+  They render upright at `Rot0` with no mirroring.
+
+| Code | Control |
+|---|---|
+| `0x01`–`0x0F` | LCD keys 1–15, reading order |
+| `0x1E` / `0x1F` | top button left / right |
+| `0x23` | knob press |
+| `0x32` / `0x33` | knob turn left / right |
+
+Byte 10 carries the state: `0x01` press, `0x00` release.
+
+## Install
+
+```bash
+sudo cp 40-opendeck-vsd-n1.rules /etc/udev/rules.d/
+sudo udevadm control --reload-rules && sudo udevadm trigger
 ```
 
-### Building a release package
+Replug the device, then build and install the plugin:
 
-```sh
-$ just package
+```bash
+cargo build --release
+ID=dev.native.plugins.opendeck-vsd-n1.sdPlugin
+DEST=~/.config/opendeck/plugins/$ID
+mkdir -p "$DEST"
+cp -r assets manifest.json "$DEST/"
+cp target/release/opendeck-vsd-n1 "$DEST/opendeck-vsd-n1-linux"
 ```
 
-## Acknowledgments
+Restart OpenDeck. The device appears as "VSD Stream Dock N1".
 
-This plugin is heavily based on work by contributors of [elgato-streamdeck](https://github.com/streamduck-org/elgato-streamdeck) crate
+Note that OpenDeck holds the binary open while it runs, so stop it before copying a new build
+or the copy fails with "text file busy".
+
+## Tests
+
+```bash
+cargo test
+```
+
+The suite pins the hardware-measured corner values, so a change to the grid mapping fails
+loudly instead of silently scrambling every icon.
+
+## Credits
+
+- [4ndv](https://github.com/4ndv) for [mirajazz](https://github.com/4ndv/mirajazz) and the
+  `opendeck-akp03` / `opendeck-akp153` plugins this is forked from
+- [skyf/lightslinger](https://github.com/skyf/lightslinger) for the N1 protocol documentation
+- [MiraboxSpace/StreamDock-Device-SDK](https://github.com/MiraboxSpace/StreamDock-Device-SDK)
+  for the MIT-licensed reference implementation the key codes were extracted from
+
+## License
+
+GPL-3.0, inherited from `opendeck-akp03`.
