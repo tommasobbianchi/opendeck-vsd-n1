@@ -59,10 +59,15 @@ all 15 keys and reading them off the glass.
 ## Where this contradicts the published protocol
 
 `lightslinger/docs/protocol-init-and-images.md` documents the mode enum as
-`0=KEYBOARD, 1=CALCULATOR, 2=SOFTWARE` and initialises with `switchMode(2)`. On this unit the
-values are shifted by one: `MOD` takes `0x30 + mode`, **`2` selects the calculator and `3` is
-software**. Sending the documented `2` leaves the device connected, accepting images, and
-permanently silent on input — which looks exactly like a broken reader.
+`0=KEYBOARD, 1=CALCULATOR, 2=SOFTWARE` and initialises with `switchMode(2)`, straight from the
+vendor SDK. On this unit the values are shifted: `MOD` takes `0x30 + mode`, **`2` selects the
+calculator and `3` is software**. Sending the documented `2` leaves the device connected,
+accepting images, and permanently silent on input — which looks exactly like a broken reader.
+
+That page is stale rather than the protocol being unknown: lightslinger's own
+`pkg/protocol/constants.go` carries `ModeSoftware = 3` with a note reaching the same conclusion
+from a different unit. Two units, two projects, same answer — treat the SDK's value as wrong
+for this PID.
 
 ## Known limitations
 
