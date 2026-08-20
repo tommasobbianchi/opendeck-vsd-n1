@@ -10,15 +10,14 @@ pub const DEVICE_NAMESPACE: &str = "n1";
 /// 5 rows, with a strip of three secondary screens above them. Verified on hardware --
 /// pressing the top-right key reports 0x03 and the bottom-left key reports 0x0D.
 ///
-/// We expose a 3x6 grid and give the secondary strip the last row, which lines up exactly:
-/// the device's display slot is always the grid index plus one, for main and secondary keys
-/// alike.
+/// We expose a 3x6 grid and give the secondary strip row 0, where the hardware has it. On the
+/// wire the device numbers the main block 1..=15 and the strip 16..=18, the opposite order, so
+/// `opendeck_to_device` translates between the two.
 pub const ROW_COUNT: usize = 6;
 pub const COL_COUNT: usize = 3;
 pub const KEY_COUNT: usize = ROW_COUNT * COL_COUNT; // 18
 pub const ENCODER_COUNT: usize = 1; // the rotary knob
 
-/// Grid positions of the last row: the secondary 64x64 screens, not the main LCD keys.
 /// Grid positions of the secondary strip: two 64x64 screens with a button behind each,
 /// and a third screen with the knob under it. Physically this strip is the top row, so it
 /// takes row 0 and the 15 main keys start below it -- otherwise OpenDeck draws the deck
@@ -95,7 +94,7 @@ impl Kind {
 pub const IMAGE_ROTATION: ImageRotation = ImageRotation::Rot0;
 pub const IMAGE_MIRRORING: ImageMirroring = ImageMirroring::None;
 
-/// Main LCD keys are 96x96, the secondary screens in the last column are 64x64.
+/// Main LCD keys are 96x96, the secondary screens in row 0 are 64x64.
 pub fn get_image_format_for_key(_kind: &Kind, key: u8) -> ImageFormat {
     let size = if SECONDARY_KEYS.contains(&key) {
         (64, 64)

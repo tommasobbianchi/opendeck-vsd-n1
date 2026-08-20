@@ -25,17 +25,21 @@ window has focus.
 The N1 stands in **portrait**: 15 LCD keys in 3 columns by 5 rows, with a strip of three
 secondary screens above them. It is a numpad replacement, and the 480×854 background screen
 agrees. OpenDeck can only register a rectangular grid, so the plugin exposes 3×6 and gives the
-secondary strip the last row — which lines up exactly, because the device's display slot is
-always the grid index plus one.
+secondary strip **row 0**, where the hardware has it — put it last and the deck on screen is
+upside down with respect to the one under your hands.
 
 ```
- 0  1  2      <- LCD keys, device codes 0x01..0x03
- 3  4  5
+ 0  1  2      <- secondary strip: left button, right button, knob screen (no button)
+ 3  4  5      <- LCD keys, device codes 0x01..0x03
  6  7  8
  9 10 11
-12 13 14      <- device codes 0x0D..0x0F
-15 16 17      <- secondary strip: left button, right button, display-only
+12 13 14
+15 16 17      <- device codes 0x0D..0x0F
 ```
+
+On the wire the order is reversed: the device numbers the main block `1..=15` and the strip
+`16..=18`, so the plugin translates between the two. Images therefore land on the key that
+reports the press, which is what the round-trip test in `src/inputs.rs` pins down.
 
 The knob is encoder 0: turning it emits encoder change events, pressing it emits down/up.
 
